@@ -1,21 +1,26 @@
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.io.Reader;
 
 public class Filter{  
-    static ArrayList<String> text = new ArrayList<String>();
+    //static ArrayList<String> text = new ArrayList<String>();
     static ArrayList<String> fileNames = new ArrayList<String>();
     static String prefix = ""; //  -p
     static String outputPath = ""; // -o
@@ -26,52 +31,54 @@ public class Filter{
     static BigInteger maxInt = null;
     static BigDecimal sumInt = BigDecimal.ZERO;
 
-    static double minFloat = Double.MAX_VALUE;
-    static double maxFloat = Double.MIN_VALUE;
+    static double minFloat = Double.POSITIVE_INFINITY;
+    static double maxFloat = Double.NEGATIVE_INFINITY;
     static double sumFloat = 0;
 
     static int shortestString = Integer.MAX_VALUE;
-    static int longestString = Integer.MIN_VALUE;
+    static int longestString = 0;
 
     static int integersCount = 0;
     static int stringsCount = 0;
     static int floatsCount = 0;
-    
-    static StringBuilder integersBuilder = new StringBuilder();
-    static StringBuilder floatsBuilder = new StringBuilder();
-    static StringBuilder stringsBuilder = new StringBuilder();
-    
+
+    static BufferedWriter intWriter, floatWriter, stringWriter;
+    public static BufferedWriter getWriter(String type) throws IOException {
+        if (type.equals("int")) {
+            //just like a singleton i guess
+            if (intWriter == null) intWriter = createWriter("integers.txt");
+            return intWriter;
+        }
+        if (type.equals("float")) {
+            if (floatWriter == null) floatWriter = createWriter("floats.txt");
+            return floatWriter;
+        }
+        if (stringWriter == null) stringWriter = createWriter("strings.txt");
+        return stringWriter;
+    }   
+
+    public static BufferedWriter createWriter(String fileName) throws IOException {
+        try{
+            if (!outputPath.isEmpty()) {
+                Path dir = Paths.get(outputPath);
+                if (!Files.exists(dir)) {
+                    System.err.println("filter: " + outputPath + ": No such directory");
+                    System.exit(1);
+                }
+            }
+            Path path = Paths.get(outputPath, prefix + fileName);
+            return Files.newBufferedWriter(path, StandardOpenOption.CREATE, shouldAppend ? StandardOpenOption.APPEND : StandardOpenOption.TRUNCATE_EXISTING);
+        }
+        catch(AccessDeniedException exception){
+            System.err.println("filter: " + outputPath + ": Permission denied");
+            System.exit(1);
+            return null;
+        }
+    }
+
     public static void showHelp(){
         System.out.println("Usage: filter [OPTION]... [FILE]...\nFilters the contents of files\n\nOptions:\n  -p [prefix]\tset prefix for output file names\n  -o [dir]\tset output directory\n  -a\tappend to the file (default rewrites files)\n  -s\tshort stats (default)\n  -f\tfull stats\n  --help\tdisplay this help and exit");
         System.exit(0);
-    }
-
-    public static void readInput(){
-        if (fileNames.isEmpty()){
-            try{
-                BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-                text.addAll(reader.lines().collect(Collectors.toList()));
-                reader.close();
-            }
-            catch(IOException exception){
-                System.err.println(exception);
-            }
-        }
-        else{
-            for(String fileName : fileNames){
-                try{
-                    List<String> lines = Files.readAllLines(Path.of(fileName));
-                    text.addAll(lines);
-                }
-                catch(NoSuchFileException exception){
-                    System.err.println("filter: " +  fileName + ": No such file or directory");
-                    System.exit(1);
-                }
-                catch(IOException exception){
-                    System.err.println(exception);
-                }
-            }
-        }
     }
 
     public static void parseArgs(String args[]){
@@ -84,14 +91,14 @@ public class Filter{
             if(arg.startsWith("-") && arg.length() > 1){
                 switch (arg.charAt(1)) {
                     case 'p':
-                        if (i + 1 < args.length) prefix = args[++i];
+                        if (i + 1 < args.length && !args[i+1].startsWith("-")) prefix = args[++i];
                         else {
                             System.err.println("filter: option -p requires an argument");
                             System.exit(1);
                         }
                     break;
                     case 'o':
-                        if (i + 1 < args.length) outputPath = args[++i];
+                        if (i + 1 < args.length && !args[i+1].startsWith("-")) outputPath = args[++i];
                         else{
                             System.err.println("filter: option -o requires an argument");
                             System.exit(1);
@@ -111,78 +118,83 @@ public class Filter{
         }
     }
 
-    public static void writeOutput(){
-        if(integersCount > 0){
-            writeFile(Paths.get(outputPath, prefix+"integers.txt"), integersBuilder);
+    public static void readInput(){
+        if (fileNames.isEmpty()) processFile(new InputStreamReader(System.in), "stdin");
+        else{
+            for(String fileName : fileNames){
+                try {processFile(new FileReader(fileName), fileName);}
+                    catch(IOException exception){
+                    System.err.println("filter: " +  fileName + ": No such file or directory");
+                    //System.exit(1);
+                }
+            }
         }
-        if(floatsCount > 0){
-            writeFile(Paths.get(outputPath, prefix+"floats.txt"), floatsBuilder);
-        }
-        if(stringsCount > 0){
-            writeFile(Paths.get(outputPath, prefix+"strings.txt"), stringsBuilder);
-        }  
     }
 
-    public static void writeFile(Path path, StringBuilder builder){
-        try(FileWriter fr = new FileWriter(path.toFile(), shouldAppend);){
-            fr.write(builder.toString());
+    public static void processFile(Reader reader, String fileName){
+        try (BufferedReader br = new BufferedReader(reader)) {
+            String currentLine;
+            while ((currentLine = br.readLine()) != null) {
+                if (currentLine.matches("^-?\\d+$")){
+                    integersCount++;
+                    getWriter("int").write(currentLine+"\n");
+                    if(shortStats) continue;
+
+                    BigInteger currentInt = new BigInteger(currentLine);
+                    if (maxInt == null || currentInt.compareTo(maxInt) > 0) maxInt = currentInt;
+                    if (minInt == null || currentInt.compareTo(minInt) < 0) minInt = currentInt;
+                    sumInt = sumInt.add(new BigDecimal(currentInt));
+                }
+                else if (currentLine.matches("^-?\\d*\\.?\\d+([eE][-+]?\\d+)?$")) {
+                    floatsCount++;
+                    getWriter("float").write(currentLine+"\n");
+                    if (shortStats) continue;
+
+                    double currentFloat = Double.parseDouble(currentLine);
+                    if (currentFloat > maxFloat) maxFloat = currentFloat;
+                    if (currentFloat < minFloat) minFloat = currentFloat;
+                    sumFloat += currentFloat;
+                }
+                else{
+                    stringsCount++;
+                    getWriter("string").write(currentLine+"\n");
+                    if(shortStats) continue;
+
+                    if(currentLine.length() > longestString) longestString = currentLine.length();
+                    if(currentLine.length() < shortestString) shortestString = currentLine.length();
+                }
+            }
         }
         catch(FileNotFoundException exception){
-            System.err.println("filter: " +  path.getParent() + ": directory doesn't exist");
-            System.exit(1);
+            System.err.println("filter: " +  fileName + ": No such file or directory");
+        }
+        catch(AccessDeniedException exception){
+            System.err.println("filter: " + fileName + ": Permission denied");
         }
         catch(IOException exception){
-            System.err.println(exception);
-        }
-    }
-
-    public static void processLines(){
-        for (int i = 0; i < text.size(); i++) {
-            String currentLine = text.get(i);
-            if (currentLine.matches("^-?\\d+$")){
-                integersBuilder.append(currentLine).append("\n");
-                integersCount++;
-                if(shortStats) continue;
-
-                BigInteger currentInt = new BigInteger(currentLine);
-                if (maxInt == null || currentInt.compareTo(maxInt) > 0) maxInt = currentInt;
-                if (minInt == null || currentInt.compareTo(minInt) < 0) minInt = currentInt;
-                sumInt = sumInt.add(new BigDecimal(currentInt));
-            }
-            //^-?\\d+\\.\\d+$
-            else if (currentLine.matches("^-?\\d*\\.?\\d+([eE][-+]?\\d+)?$")) {
-                floatsBuilder.append(currentLine).append("\n");
-                floatsCount++;
-                if (shortStats) continue;
-                double currentFloat = Double.parseDouble(currentLine);
-                if (currentFloat > maxFloat) maxFloat = currentFloat;
-                if (currentFloat < minFloat) minFloat = currentFloat;
-                sumFloat += currentFloat;
-            }
-            else{
-                stringsBuilder.append(currentLine).append("\n");
-                stringsCount++;
-                if(shortStats) continue;
-                if(currentLine.length() > longestString) longestString = currentLine.length();
-                if(currentLine.length() < shortestString) shortestString = currentLine.length();
-            }
+            System.err.println("filter: " + fileName + ": Is directory (ignored)");
         }
     }
 
     public static void writeStats(){
-        System.out.println("Stats:\n\t" + prefix+"integers.txt:\t" + integersCount + "\n\t"+prefix+"floats.txt:\t\t" + floatsCount + "\n\t"+prefix+"strings.txt:\t" + stringsCount);
+        System.out.println("Stats:\n\t" + prefix+"integers.txt:\t" + integersCount + "\n\t"+prefix+"floats.txt:\t" + floatsCount + "\n\t"+prefix+"strings.txt:\t" + stringsCount);
         if (!shortStats){
-            if (integersCount > 0) System.out.println("Integers:\nmin:\t"+minInt+"\nmax:\t"+maxInt+"\nsum:\t"+sumInt+"\navg:\t"+ sumInt.divide(new BigDecimal(integersCount), 10, RoundingMode.HALF_UP));
-            if (floatsCount > 0) System.out.println("Floats:\nmin:\t"+minFloat+"\nmax:\t"+maxFloat+"\nsum:\t"+sumFloat+"\navg:\t"+sumFloat/floatsCount);
-            if (stringsCount > 0) System.out.println("Strings:\nshortest string length:\t"+shortestString+"\nlongest string length:\t"+longestString);
+            if (integersCount > 0) System.out.println("Integers:\n\tmin:\t"+minInt+"\n\tmax:\t"+maxInt+"\n\tsum:\t"+sumInt+"\n\tavg:\t"+ sumInt.divide(new BigDecimal(integersCount), 10, RoundingMode.HALF_UP));
+            if (floatsCount > 0) System.out.println("Floats:\n\tmin:\t"+minFloat+"\n\tmax:\t"+maxFloat+"\n\tsum:\t"+sumFloat+"\n\tavg:\t"+sumFloat/floatsCount);
+            if (stringsCount > 0) System.out.println("Strings:\n\tshortest string length:\t"+shortestString+"\n\tlongest string length:\t"+longestString);
         }
     }
 
     public static void main (String args[]){
         parseArgs(args);
         readInput();
-        processLines();
-        writeOutput();
+        try {
+            if (intWriter != null) intWriter.close();
+            if (floatWriter != null) floatWriter.close();
+            if (stringWriter != null) stringWriter.close();
+        } catch (IOException e) {
+            System.err.println("Ошибка при закрытии файлов");
+        }
         writeStats();
     }
 }
