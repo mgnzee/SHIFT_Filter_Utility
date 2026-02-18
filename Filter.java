@@ -20,12 +20,28 @@ import java.util.stream.Collectors;
 import java.io.Reader;
 
 public class Filter{  
-    //static ArrayList<String> text = new ArrayList<String>();
+    static String helpMessage = """
+            Usage: filter [OPTION]... [FILE]...
+            Filters the contents of files
+            
+            Options:
+              -p [prefix]\tset prefix for output file names
+              -o [dir]\tset output directory
+              -a\tappend to the file (default rewrites files)
+              -A\trewrite files
+              -s\tshort stats (default)-
+              -f\tfull stats
+              -b\tignore blank lines
+              -B\tkeep blank lines
+              -q\tdon't show stats
+              --help\tdisplay this help and exit""";
     static ArrayList<String> fileNames = new ArrayList<String>();
     static String prefix = ""; //  -p
     static String outputPath = ""; // -o
-    static boolean shouldAppend = false; // -a
+    static boolean shouldAppend = false; // -a / -A
     static boolean shortStats = true; // -s / -f
+    static boolean ignoreSpaces = false; // -b / -B
+    static boolean quiet = false; // -q
 
     static BigInteger minInt = null;
     static BigInteger maxInt = null;
@@ -77,7 +93,7 @@ public class Filter{
     }
 
     public static void showHelp(){
-        System.out.println("Usage: filter [OPTION]... [FILE]...\nFilters the contents of files\n\nOptions:\n  -p [prefix]\tset prefix for output file names\n  -o [dir]\tset output directory\n  -a\tappend to the file (default rewrites files)\n  -s\tshort stats (default)\n  -f\tfull stats\n  --help\tdisplay this help and exit");
+        System.out.println(helpMessage);
         System.exit(0);
     }
 
@@ -105,8 +121,12 @@ public class Filter{
                         }
                     break;
                     case 'a': shouldAppend = true; break;
+                    case 'A': shouldAppend = false; break;
                     case 's': shortStats = true; break;
                     case 'f': shortStats = false; break;
+                    case 'b': ignoreSpaces = true; break;
+                    case 'B': ignoreSpaces = false; break;
+                    case 'q': quiet = true; break;
                     default: 
                         System.err.println("filter: usage: filter [OPTION]... [FILE]..."); 
                         System.exit(1);
@@ -123,9 +143,8 @@ public class Filter{
         else{
             for(String fileName : fileNames){
                 try {processFile(new FileReader(fileName), fileName);}
-                    catch(IOException exception){
+                catch(IOException exception){
                     System.err.println("filter: " +  fileName + ": No such file or directory");
-                    //System.exit(1);
                 }
             }
         }
@@ -135,6 +154,7 @@ public class Filter{
         try (BufferedReader br = new BufferedReader(reader)) {
             String currentLine;
             while ((currentLine = br.readLine()) != null) {
+                if (ignoreSpaces && currentLine.isBlank()) continue;
                 if (currentLine.matches("^-?\\d+$")){
                     integersCount++;
                     getWriter("int").write(currentLine+"\n");
@@ -192,9 +212,10 @@ public class Filter{
             if (intWriter != null) intWriter.close();
             if (floatWriter != null) floatWriter.close();
             if (stringWriter != null) stringWriter.close();
-        } catch (IOException e) {
-            System.err.println("Ошибка при закрытии файлов");
+        } 
+        catch (IOException exception) {
+            System.err.println(exception.getMessage());
         }
-        writeStats();
+        if(!quiet) writeStats();
     }
 }
