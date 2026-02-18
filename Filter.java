@@ -29,7 +29,7 @@ public class Filter{
               -o [dir]\tset output directory
               -a\tappend to the file (default rewrites files)
               -A\trewrite files
-              -s\tshort stats (default)-
+              -s\tshort stats (default)
               -f\tfull stats
               -b\tignore blank lines
               -B\tkeep blank lines
@@ -105,31 +105,39 @@ public class Filter{
                 return;
             }
             if(arg.startsWith("-") && arg.length() > 1){
-                switch (arg.charAt(1)) {
-                    case 'p':
-                        if (i + 1 < args.length && !args[i+1].startsWith("-")) prefix = args[++i];
-                        else {
-                            System.err.println("filter: option -p requires an argument");
+                for(int j = 1; j < arg.length(); j++){
+                    switch (arg.charAt(j)) {
+                        case 'p':
+                            if (i + 1 < args.length && !args[i+1].startsWith("-")){
+                                prefix = args[++i];
+                                j = arg.length();
+                            }
+                            else {
+                                System.err.println("filter: option -p requires an argument");
+                                System.exit(1);
+                            }
+                        break;
+                        case 'o':
+                            if (i + 1 < args.length && !args[i+1].startsWith("-")){
+                                outputPath = args[++i];
+                                j = arg.length();
+                            }
+                            else{
+                                System.err.println("filter: option -o requires an argument");
+                                System.exit(1);
+                            }
+                        break;
+                        case 'a': shouldAppend = true; break;
+                        case 'A': shouldAppend = false; break;
+                        case 's': shortStats = true; break;
+                        case 'f': shortStats = false; break;
+                        case 'b': ignoreSpaces = true; break;
+                        case 'B': ignoreSpaces = false; break;
+                        case 'q': quiet = true; break;
+                        default: 
+                            System.err.println("filter: usage: filter [OPTION]... [FILE]..."); 
                             System.exit(1);
-                        }
-                    break;
-                    case 'o':
-                        if (i + 1 < args.length && !args[i+1].startsWith("-")) outputPath = args[++i];
-                        else{
-                            System.err.println("filter: option -o requires an argument");
-                            System.exit(1);
-                        }
-                    break;
-                    case 'a': shouldAppend = true; break;
-                    case 'A': shouldAppend = false; break;
-                    case 's': shortStats = true; break;
-                    case 'f': shortStats = false; break;
-                    case 'b': ignoreSpaces = true; break;
-                    case 'B': ignoreSpaces = false; break;
-                    case 'q': quiet = true; break;
-                    default: 
-                        System.err.println("filter: usage: filter [OPTION]... [FILE]..."); 
-                        System.exit(1);
+                    }
                 }
             }
             else{
@@ -197,7 +205,7 @@ public class Filter{
     }
 
     public static void writeStats(){
-        System.out.println("Stats:\n\t" + prefix+"integers.txt:\t" + integersCount + "\n\t"+prefix+"floats.txt:\t" + floatsCount + "\n\t"+prefix+"strings.txt:\t" + stringsCount);
+        System.out.println("Stats:\n\tintegers:\t" + integersCount + "\n\tfloats:\t" + floatsCount + "\n\tstrings:\t" + stringsCount);
         if (!shortStats){
             if (integersCount > 0) System.out.println("Integers:\n\tmin:\t"+minInt+"\n\tmax:\t"+maxInt+"\n\tsum:\t"+sumInt+"\n\tavg:\t"+ sumInt.divide(new BigDecimal(integersCount), 10, RoundingMode.HALF_UP));
             if (floatsCount > 0) System.out.println("Floats:\n\tmin:\t"+minFloat+"\n\tmax:\t"+maxFloat+"\n\tsum:\t"+sumFloat+"\n\tavg:\t"+sumFloat/floatsCount);
