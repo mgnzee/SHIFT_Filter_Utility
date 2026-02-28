@@ -196,7 +196,7 @@ public static void processFile(Reader reader, String fileName){
         System.err.println("filter: " + fileName + ": Permission denied");
     }
     catch(IOException exception){
-        System.err.println("filter: " + fileName + ": Is directory (ignored)");
+        System.err.println("filter: " + exception.getMessage());
     }
 }
 
